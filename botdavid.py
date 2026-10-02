@@ -40,7 +40,6 @@ def get_photo(photo_path):
 # ПРЕМИУМ ЭМОДЗИ
 # =====================================================
 EMOJI_IDS = {
-    # --- старые ключи (не удаляй) ---
     "rekvizity": "5445221832074483553",
     "create_deal": "5458603043203327669",
     "referral": "5271604874419647061",
@@ -89,7 +88,6 @@ EMOJI_IDS = {
     "confirm": "5395695537687123235",
     "warning": "5395695537687123235",
 
-    # --- новые work-слоты ---
     "work1":  "6041921818896372382", "work2":  "5282806230732021905", "work3":  "5890925363067886150", "work4":  "5920515922505765329", "work5":  "5902056028513505203",
     "work6":  "6030445631921721471", "work7":  "", "work8":  "", "work9":  "", "work10": "",
     "work11": "", "work12": "", "work13": "", "work14": "", "work15": "",
@@ -112,7 +110,6 @@ def emoji(key: str, fallback: str = "✨") -> str:
 
 
 def eid(*keys):
-    """Возвращает первый непустой ID из списка ключей (для icon_custom_emoji_id)."""
     for k in keys:
         v = EMOJI_IDS.get(k)
         if v:
@@ -121,7 +118,7 @@ def eid(*keys):
 
 
 # =====================================================
-# БЕЗОПАСНОЕ РЕДАКТИРОВАНИЕ СООБЩЕНИЙ
+# БЕЗОПАСНОЕ РЕДАКТИРОВАНИЕ
 # =====================================================
 async def safe_edit(callback: CallbackQuery, text: str, markup, use_photo: bool = False):
     msg = callback.message
@@ -1116,39 +1113,33 @@ async def handle_deal_entry(message: types.Message, deal_id: str):
     entering_user = message.from_user
     entering_username = entering_user.username or entering_user.first_name
 
-    # Определяем, кто вошёл: покупатель или продавец
     if role == 'seller':
+        deal['seller_id'] = deal['creator_id']
+        deal['seller_username'] = deal['creator_username']
         deal['buyer_id'] = entering_user.id
         deal['buyer_username'] = entering_username
-        is_buyer = True
-        seller_id = deal['creator_id']
-        seller_username = deal['creator_username']
     else:
+        deal['buyer_id'] = deal['creator_id']
+        deal['buyer_username'] = deal['creator_username']
         deal['seller_id'] = entering_user.id
         deal['seller_username'] = entering_username
-        is_buyer = False
-        seller_id = entering_user.id
-        seller_username = entering_username
 
-    # Уведомляем создателя
+    seller_id = deal['seller_id']
+    seller_username = deal['seller_username']
+    buyer_id = deal['buyer_id']
+    entering_is_buyer = (entering_user.id == buyer_id)
+
     try:
-        if role == 'seller':
-            notify_text = (
-                f"{emoji('user_id', '👤')} Новый участник в сделке <b>#{deal_id}</b>\n\n"
-                f"@{entering_username} присоединился как <b>покупатель</b>.\n\n"
-                f"• Подарок отправляйте только на @{HELPER_USER}."
-            )
-        else:
-            notify_text = (
-                f"{emoji('user_id', '👤')} Новый участник в сделке <b>#{deal_id}</b>\n\n"
-                f"@{entering_username} присоединился как <b>продавец</b>.\n\n"
-                f"• Подарок отправляйте только на @{HELPER_USER}."
-            )
+        notify_text = (
+            f"{emoji('user_id', '👤')} Новый участник в сделке <b>#{deal_id}</b>\n\n"
+            f"@{entering_username} присоединился как "
+            f"<b>{'покупатель' if entering_is_buyer else 'продавец'}</b>.\n\n"
+            f"• Подарок отправляйте только на @{HELPER_USER}."
+        )
         await bot.send_message(deal['creator_id'], notify_text, parse_mode="HTML")
     except Exception as e:
         logging.error(f"Ошибка уведомления создателя: {e}")
 
-    # Реквизиты продавца
     currency = deal['currency']
     if currency == "TON":
         seller_details = user_ton.get(seller_id, "—")
@@ -1170,19 +1161,7 @@ async def handle_deal_entry(message: types.Message, deal_id: str):
         "STR": "STARS", "TON": "TON",
     }.get(currency, currency)
 
-    if is_buyer:
-        header = (
-            f"{emoji('confirm', '✅')} <b>Вы подключились к сделке #{deal_id} "
-            f"как покупатель.</b>"
-        )
-    else:
-        header = (
-            f"{emoji('confirm', '✅')} <b>Вы подключились к сделке #{deal_id} "
-            f"как продавец.</b>"
-        )
-
-    text = (
-        f"{header}\n\n"
+    deal_info = (
         f"<blockquote>"
         f"{emoji('user_id', '👤')} <b>Продавец:</b> @{seller_username}\n"
         f"{emoji('dealuid', '💎')} <b>ID продавца:</b> <code>{seller_id}</code>\n"
@@ -1191,25 +1170,55 @@ async def handle_deal_entry(message: types.Message, deal_id: str):
         f"{emoji('flagr', '🇷🇺')} <b>Валюта:</b> {currency_text}\n"
         f"{emoji('money_home', '💰')} <b>Сумма:</b> {deal['amount']}\n"
         f"{emoji('rubles', '💳')} <b>Реквизиты менеджера для оплаты:</b> <code>{seller_details}</code>"
-        f"</blockquote>\n\n"
-        f"{emoji('crystal', '💎')} <b>Вся оплата и передача товара проходит ТОЛЬКО через "
-        f"менеджера @{MANAGER_USER}.</b>\n"
-        f"{emoji('warning', '❌')} <b>Не переводите средства напрямую продавцу!</b>\n"
-        f"{emoji('support', '🕒')} <b>Проверьте реквизиты перед оплатой!</b>"
+        f"</blockquote>"
     )
 
-    b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(
-        text="✅ Подтвердить оплату",
-        callback_data=f"confirm_pay_{deal_id}",
-        style="success"
-    ))
-    b.row(InlineKeyboardButton(
-        text="❌ Выйти",
-        callback_data="back_to_menu",
-        style="danger"
-    ))
-    await message.answer(text=text, reply_markup=b.as_markup(), parse_mode="HTML")
+    if entering_is_buyer:
+        header = (
+            f"{emoji('confirm', '✅')} <b>Вы подключились к сделке #{deal_id} "
+            f"как покупатель.</b>"
+        )
+        footer = (
+            f"{emoji('crystal', '💎')} <b>Вся оплата и передача товара проходит ТОЛЬКО через "
+            f"менеджера @{MANAGER_USER}.</b>\n"
+            f"{emoji('warning', '❌')} <b>Не переводите средства напрямую продавцу!</b>\n"
+            f"{emoji('support', '🕒')} <b>Проверьте реквизиты перед оплатой!</b>"
+        )
+        text = f"{header}\n\n{deal_info}\n\n{footer}"
+
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(
+            text="✅ Подтвердить оплату",
+            callback_data=f"confirm_pay_{deal_id}",
+            style="success"
+        ))
+        b.row(InlineKeyboardButton(
+            text="❌ Выйти",
+            callback_data="back_to_menu",
+            style="danger"
+        ))
+        await message.answer(text=text, reply_markup=b.as_markup(), parse_mode="HTML")
+
+    else:
+        header = (
+            f"{emoji('confirm', '✅')} <b>Вы подключились к сделке #{deal_id} "
+            f"как продавец.</b>"
+        )
+        footer = (
+            f"{emoji('support', '🕒')} <b>Ожидайте подтверждения оплаты от покупателя.</b>\n\n"
+            f"{emoji('crystal', '💎')} После подтверждения оплаты вам придёт сообщение "
+            f"с кнопкой <b>«🎁 Отправил»</b>.\n"
+            f"{emoji('warning', '❌')} <b>Не отправляйте товар до подтверждения оплаты!</b>"
+        )
+        text = f"{header}\n\n{deal_info}\n\n{footer}"
+
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(
+            text="❌ Выйти",
+            callback_data="back_to_menu",
+            style="danger"
+        ))
+        await message.answer(text=text, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
 @dp.callback_query(F.data.startswith("confirm_pay_"))
@@ -1218,7 +1227,7 @@ async def process_confirm_payment(callback: CallbackQuery):
 
 
 # =====================================================
-# ФЕЙК-ПОДТВЕРЖДЕНИЕ (админы)
+# ПОДТВЕРЖДЕНИЕ ОПЛАТЫ (админы)
 # =====================================================
 
 @dp.message(Command("buy"))
@@ -1245,36 +1254,82 @@ async def process_fake_confirm(callback: CallbackQuery):
     if deal_id not in deals:
         await callback.answer("Сделка не найдена", show_alert=True)
         return
+
     deal = deals[deal_id]
-    deal['buyer_id'] = callback.from_user.id
+    if 'seller_id' not in deal:
+        await callback.answer("❌ Сделка ещё не активирована (нет участников).", show_alert=True)
+        return
+
+    seller_id = deal['seller_id']
+    buyer_id = deal.get('buyer_id')
 
     labels = {
-        "RUB": "RUB 🇷🇺", "KZT": "KZT 🇰🇿", "UAH": "UAH 🇺🇦",
-        "BYN": "BYN 🇧🇾", "USD": "USD 🇺🇸",
-        "USDT": "USDT 💵", "BTC": "BTC ₿",
-        "STR": "Stars ⭐", "TON": "TON 💎",
+        "RUB": "₽ RUB", "KZT": "₸ KZT", "UAH": "₴ UAH",
+        "BYN": "Br BYN", "USD": "$ USD",
+        "USDT": "💵 USDT", "BTC": "₿ BTC",
+        "STR": "⭐ Stars", "TON": "💎 TON",
     }.get(deal['currency'], "RUB")
 
+    # === ПРОДАВЦУ приходит кнопка «Отправил» ===
     seller_text = (
-        f"✅ <b>Оплата подтверждена #{deal_id}</b>\n"
-        f"Сумма: {deal['amount']} {labels}\n"
-        f"Товар: {deal['description']}\n\n"
-        f"Отправьте подарок @{MANAGER_USER} и нажмите кнопку:"
+        f"{emoji('confirm', '✅')} <b>ОПЛАТА ПОДТВЕРЖДЕНА</b>\n"
+        f"<blockquote>"
+        f"{emoji('dealuid', '🆔')} <b>Сделка:</b> <code>#{deal_id}</code>\n"
+        f"{emoji('money_home', '💰')} <b>Сумма:</b> <b>{deal['amount']} {labels}</b>\n"
+        f"{emoji('dealty', '📈')} <b>Комиссия сервиса:</b> 1%\n"
+        f"{emoji('create_deal', '📝')} <b>Товар:</b> {deal['description']}"
+        f"</blockquote>\n\n"
+        f"{emoji('crystal', '💎')} <b>Что делать дальше:</b>\n"
+        f"1️⃣ Отправьте подарок на аккаунт <b>@{MANAGER_USER}</b>\n"
+        f"2️⃣ Убедитесь, что получатель — именно <b>@{MANAGER_USER}</b>\n"
+        f"3️⃣ Нажмите кнопку <b>«🎁 Я отправил подарок»</b> ниже\n\n"
+        f"{emoji('warning', '⚠️')} <i>Не отправляйте товар покупателю напрямую — "
+        f"это аннулирует сделку и вы не получите оплату.</i>"
     )
     b_seller = InlineKeyboardBuilder()
-    b_seller.row(InlineKeyboardButton(text="🎁 Отправил", callback_data=f"gift_sent_{deal_id}", style="success"))
+    b_seller.row(InlineKeyboardButton(
+        text="🎁 Я отправил подарок",
+        callback_data=f"gift_sent_{deal_id}",
+        style="success"
+    ))
+    b_seller.row(InlineKeyboardButton(
+        text="❓ Не вижу оплату / вопрос",
+        url=SUPPORT_LINK,
+        style="danger"
+    ))
     try:
-        await bot.send_message(deal['creator_id'], seller_text, reply_markup=b_seller.as_markup(), parse_mode="HTML")
+        await bot.send_message(seller_id, seller_text,
+                               reply_markup=b_seller.as_markup(), parse_mode="HTML")
     except Exception as e:
-        logging.error(f"Error: {e}")
+        logging.error(f"Error sending to seller: {e}")
 
-    buyer_text = (
-        f"💳 <b>Оплата подтверждена!</b>\n"
-        f"Сделка: #{deal_id}\nСумма: {deal['amount']} {labels}"
-    )
-    await safe_edit(callback, buyer_text, None)
+    # === АДМИНУ подтверждение ===
+    await safe_edit(callback, f"✅ Оплата по сделке <b>#{deal_id}</b> подтверждена.", None)
+
+    # === ПОКУПАТЕЛЮ ===
+    if buyer_id:
+        buyer_text = (
+            f"{emoji('confirm', '✅')} <b>ОПЛАТА ПОДТВЕРЖДЕНА</b>\n"
+            f"<blockquote>"
+            f"{emoji('dealuid', '🆔')} <b>Сделка:</b> <code>#{deal_id}</code>\n"
+            f"{emoji('money_home', '💰')} <b>Сумма:</b> <b>{deal['amount']} {labels}</b>\n"
+            f"{emoji('create_deal', '📝')} <b>Товар:</b> {deal['description']}"
+            f"</blockquote>\n\n"
+            f"{emoji('support', '⏳')} <b>Ожидайте отправки товара продавцом.</b>\n"
+            f"Как только продавец передаст подарок — вам придёт уведомление "
+            f"с кнопкой подтверждения."
+        )
+        try:
+            await bot.send_message(buyer_id, buyer_text, parse_mode="HTML")
+        except Exception as e:
+            logging.error(f"Error sending to buyer: {e}")
+
     await callback.answer()
 
+
+# =====================================================
+# ПРОДАВЕЦ НАЖАЛ «ОТПРАВИЛ»
+# =====================================================
 
 @dp.callback_query(F.data.startswith("gift_sent_"))
 async def process_gift_sent(callback: CallbackQuery):
@@ -1282,27 +1337,76 @@ async def process_gift_sent(callback: CallbackQuery):
     if deal_id not in deals:
         await callback.answer("Сделка не найдена", show_alert=True)
         return
-    deal = deals[deal_id]
-    await callback.message.answer("✅ Отправлено покупателю!")
 
-    b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"deal_finish_{deal_id}", style="success"))
-    b.row(InlineKeyboardButton(text="❌ Не получил", callback_data="not_received", style="success"))
-    try:
-        await bot.send_message(
-            deal['buyer_id'],
-            f"🔔 <b>Продавец отправил товар</b>\n\nСделка: #{deal_id}",
-            reply_markup=b.as_markup(), parse_mode="HTML"
+    deal = deals[deal_id]
+    buyer_id = deal.get('buyer_id')
+
+    if callback.from_user.id != deal.get('seller_id'):
+        await callback.answer("❌ Только продавец может нажать эту кнопку.", show_alert=True)
+        return
+
+    # === ПРОДАВЦУ подтверждение ===
+    seller_done_text = (
+        f"{emoji('confirm', '✅')} <b>ОТПРАВКА ПОДТВЕРЖДЕНА</b>\n"
+        f"<blockquote>"
+        f"{emoji('dealuid', '🆔')} <b>Сделка:</b> <code>#{deal_id}</code>\n"
+        f"{emoji('support', '⏳')} <b>Статус:</b> Ожидаем подтверждения от покупателя"
+        f"</blockquote>\n\n"
+        f"{emoji('crystal', '💎')} <i>Как только покупатель подтвердит получение — "
+        f"средства зачислятся на ваш баланс.</i>"
+    )
+    await safe_edit(callback, seller_done_text, None)
+
+    # === ПОКУПАТЕЛЮ кнопки подтверждения ===
+    if buyer_id:
+        labels = {
+            "RUB": "₽ RUB", "KZT": "₸ KZT", "UAH": "₴ UAH",
+            "BYN": "Br BYN", "USD": "$ USD",
+            "USDT": "💵 USDT", "BTC": "₿ BTC",
+            "STR": "⭐ Stars", "TON": "💎 TON",
+        }.get(deal['currency'], "RUB")
+
+        buyer_text = (
+            f"{emoji('confirm', '🎁')} <b>ПРОДАВЕЦ ОТПРАВИЛ ТОВАР</b>\n"
+            f"<blockquote>"
+            f"{emoji('dealuid', '🆔')} <b>Сделка:</b> <code>#{deal_id}</code>\n"
+            f"{emoji('money_home', '💰')} <b>Сумма:</b> <b>{deal['amount']} {labels}</b>\n"
+            f"{emoji('create_deal', '📝')} <b>Товар:</b> {deal['description']}"
+            f"</blockquote>\n\n"
+            f"{emoji('crystal', '💎')} <b>Проверьте получение товара и подтвердите сделку.</b>\n"
+            f"{emoji('warning', '⚠️')} <i>Если товар не пришёл — нажмите «Не получил», "
+            f"поддержка разберётся.</i>"
         )
-    except Exception as e:
-        logging.error(f"Error: {e}")
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(
+            text="✅ Подтвердить получение",
+            callback_data=f"deal_finish_{deal_id}",
+            style="success"
+        ))
+        b.row(InlineKeyboardButton(
+            text="❌ Не получил",
+            callback_data=f"not_received_{deal_id}",
+            style="danger"
+        ))
+        try:
+            await bot.send_message(
+                buyer_id,
+                buyer_text,
+                reply_markup=b.as_markup(), parse_mode="HTML"
+            )
+        except Exception as e:
+            logging.error(f"Error sending to buyer: {e}")
     await callback.answer()
 
 
-@dp.callback_query(F.data == "not_received")
+@dp.callback_query(F.data.startswith("not_received_"))
 async def process_not_received(callback: CallbackQuery):
     await callback.answer("Уведомление отправлено поддержке.", show_alert=True)
 
+
+# =====================================================
+# ЗАВЕРШЕНИЕ СДЕЛКИ
+# =====================================================
 
 @dp.callback_query(F.data.startswith("deal_finish_"))
 async def process_deal_finish(callback: CallbackQuery):
@@ -1310,9 +1414,15 @@ async def process_deal_finish(callback: CallbackQuery):
     if deal_id not in deals:
         await callback.answer("❌ Сделка не найдена", show_alert=True)
         return
+
     deal = deals[deal_id]
 
-    seller_id = deal['creator_id']
+    if callback.from_user.id != deal.get('buyer_id'):
+        await callback.answer("❌ Только покупатель может подтвердить завершение.", show_alert=True)
+        return
+
+    seller_id = deal['seller_id']
+    buyer_id = deal['buyer_id']
     amount = float(deal['amount'])
     commission = amount * 0.01
     amount_to_add = amount - commission
@@ -1320,37 +1430,38 @@ async def process_deal_finish(callback: CallbackQuery):
     user_balance[seller_id] = user_balance.get(seller_id, 0) + amount_to_add
     user_deals_count[seller_id] = user_deals_count.get(seller_id, 0) + 1
 
-    buyer_id = deal.get('buyer_id')
-    bonus = 0
-    if buyer_id:
-        bonus = amount * 0.002
-        user_balance[buyer_id] = user_balance.get(buyer_id, 0) + bonus
-        user_deals_count[buyer_id] = user_deals_count.get(buyer_id, 0) + 1
+    bonus = amount * 0.002
+    user_balance[buyer_id] = user_balance.get(buyer_id, 0) + bonus
+    user_deals_count[buyer_id] = user_deals_count.get(buyer_id, 0) + 1
 
     cur_sym = "RUB" if deal['currency'] == "RUB" else "Stars ⭐" if deal['currency'] == "STR" else deal['currency']
 
-    finish_text = (
-        f"✅ <b>Сделка завершена!</b>\n\n"
-        f"Сделка #{deal_id}\nСумма: {amount} {cur_sym}\n"
-        f"Комиссия (1%): {commission:.2f}\n"
-        f"Начислено: {amount_to_add:.2f}\n"
-        f"Баланс: {user_balance.get(seller_id, 0):.2f} RUB"
+    finish_text_seller = (
+        f"{emoji('confirm', '✅')} <b>СДЕЛКА ЗАВЕРШЕНА</b>\n"
+        f"<blockquote>"
+        f"{emoji('dealuid', '🆔')} <b>Сделка:</b> <code>#{deal_id}</code>\n"
+        f"{emoji('money_home', '💰')} <b>Сумма:</b> {amount} {cur_sym}\n"
+        f"{emoji('dealty', '📈')} <b>Комиссия (1%):</b> {commission:.2f}\n"
+        f"{emoji('balance', '💎')} <b>Начислено:</b> {amount_to_add:.2f}\n"
+        f"{emoji('crystal', '🪙')} <b>Баланс:</b> {user_balance.get(seller_id, 0):.2f} RUB"
+        f"</blockquote>"
     )
-    await safe_edit(callback, finish_text, None)
+    finish_text_buyer = (
+        f"{emoji('confirm', '✅')} <b>СДЕЛКА ЗАВЕРШЕНА</b>\n"
+        f"<blockquote>"
+        f"{emoji('dealuid', '🆔')} <b>Сделка:</b> <code>#{deal_id}</code>\n"
+        f"{emoji('referral', '🎁')} <b>Бонус за сделку:</b> {bonus:.2f} RUB\n"
+        f"{emoji('crystal', '🪙')} <b>Баланс:</b> {user_balance.get(buyer_id, 0):.2f} RUB"
+        f"</blockquote>\n\n"
+        f"<i>Спасибо, что пользуетесь нашим сервисом!</i>"
+    )
+
+    await safe_edit(callback, finish_text_buyer, None)
+
     try:
-        await bot.send_message(seller_id, finish_text, parse_mode="HTML")
+        await bot.send_message(seller_id, finish_text_seller, parse_mode="HTML")
     except Exception:
         pass
-
-    if buyer_id:
-        try:
-            await bot.send_message(
-                buyer_id,
-                f"✅ <b>Сделка #{deal_id} завершена!</b>\nБонус: {bonus:.2f} RUB",
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
 
     del deals[deal_id]
     await callback.answer()
